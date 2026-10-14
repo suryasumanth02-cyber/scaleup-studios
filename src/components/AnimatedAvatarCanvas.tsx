@@ -28,52 +28,35 @@ export const AnimatedAvatarCanvas: React.FC<AnimatedAvatarCanvasProps> = ({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isVideoLoaded, setIsVideoLoaded] = useState<boolean>(false);
 
-  // Synchronized Lip-Sync Video Controller:
-  // When isPlaying AND isSpeaking are true -> video plays actively with audio
-  // When speech pauses or ends -> video mouth pauses in clean resting frame
+  // Smooth Video Controller:
+  // When isPlaying is true -> video plays continuously and fluidly at broadcast quality
+  // When isPlaying is false -> video pauses cleanly
   useEffect(() => {
     if (!videoRef.current) return;
     const vid = videoRef.current;
 
-    // Actively speaking condition
-    const activelySpeaking = isPlaying && isSpeaking;
+    // Ensure video is properly configured for web playback
+    vid.muted = true;
+    vid.playsInline = true;
+    vid.loop = true;
 
-    if (activelySpeaking) {
-      vid.playbackRate = speechRate || 1.05;
+    if (isPlaying) {
+      vid.playbackRate = speechRate || 1.0;
       const playPromise = vid.play();
       if (playPromise !== undefined) {
         playPromise.catch((err) => {
-          console.warn('Playback error handled:', err);
+          console.warn('Video playback handled:', err);
         });
       }
     } else {
-      // Pause mouth movement when not speaking (e.g. between sentences or scene outro)
       vid.pause();
-      if (!isPlaying) {
+      if (sceneIndex === 0 && speechProgress === 0) {
         try {
           vid.currentTime = 0;
         } catch (_) {}
       }
     }
-  }, [isPlaying, isSpeaking, speechRate, avatar?.videoUrl]);
-
-  // Synchronize mouth cadence with character/word speech progress to prevent drift
-  useEffect(() => {
-    if (!videoRef.current || !isSpeaking || speechProgress === undefined) return;
-    const vid = videoRef.current;
-    if (!vid.duration || Number.isNaN(vid.duration)) return;
-
-    const totalSceneDur = currentScene?.duration || 5;
-    const expectedTime = (speechProgress * totalSceneDur) % vid.duration;
-    const drift = Math.abs(vid.currentTime - expectedTime);
-
-    // If video drifted by more than 0.5s, align time smoothly
-    if (drift > 0.5) {
-      try {
-        vid.currentTime = expectedTime;
-      } catch (_) {}
-    }
-  }, [speechProgress, isSpeaking, currentScene?.duration]);
+  }, [isPlaying, speechRate, avatar?.videoUrl, sceneIndex, speechProgress]);
 
   if (!avatar) return null;
 
@@ -159,11 +142,10 @@ export const AnimatedAvatarCanvas: React.FC<AnimatedAvatarCanvasProps> = ({
             <video
               ref={videoRef}
               src={videoSrc}
-              poster={avatarUrl}
               playsInline
               muted
               loop
-              autoPlay={false}
+              preload="auto"
               onLoadedData={() => setIsVideoLoaded(true)}
               className="w-full h-full object-cover object-top"
             />
@@ -212,11 +194,10 @@ export const AnimatedAvatarCanvas: React.FC<AnimatedAvatarCanvasProps> = ({
         <video
           ref={videoRef}
           src={videoSrc}
-          poster={avatarUrl}
           playsInline
           muted
           loop
-          autoPlay={false}
+          preload="auto"
           onLoadedData={() => setIsVideoLoaded(true)}
           className="w-full h-full object-cover object-center"
         />
@@ -228,33 +209,33 @@ export const AnimatedAvatarCanvas: React.FC<AnimatedAvatarCanvasProps> = ({
           style={{ backgroundColor: themeColor }}
         />
 
-        {/* Broadcast Studio Presenter Lower-Third */}
-        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center pointer-events-auto">
+        {/* Broadcast Studio Presenter Lower-Third / Live Badge (Placed at top for clear caption readability) */}
+        <div className="absolute top-16 left-3.5 z-30 flex flex-col items-start pointer-events-auto">
           <div 
-            className="px-4 py-1.5 rounded-full backdrop-blur-md flex items-center gap-2 border shadow-2xl"
+            className="px-3 py-1 rounded-full backdrop-blur-md flex items-center gap-1.5 border shadow-2xl"
             style={{
               backgroundColor: 'rgba(5, 10, 20, 0.85)',
               borderColor: `${themeColor}80`
             }}
           >
             <UserCheck className="w-3.5 h-3.5" style={{ color: themeColor }} />
-            <span className="text-xs font-black text-white tracking-wide">{avatar.name}</span>
-            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono font-bold flex items-center gap-1">
+            <span className="text-[11px] font-black text-white tracking-wide">{avatar.name}</span>
+            <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono font-bold flex items-center gap-1">
               <span className={`w-1.5 h-1.5 rounded-full ${isSpeaking ? 'bg-red-500 animate-pulse' : 'bg-emerald-400'}`} />
-              {isSpeaking ? 'LIP SYNC ACTIVE' : 'STUDIO READY'}
+              {isSpeaking ? 'ON AIR' : 'READY'}
             </span>
           </div>
 
           {/* Real-Time Speech Articulation Waveform */}
           {isPlaying && (
-            <div className="flex items-center gap-2 mt-1.5 px-3 py-1 rounded-full bg-black/75 backdrop-blur-sm border border-white/10 text-[10px] text-slate-300 font-mono shadow-md">
-              <Radio className={`w-3 h-3 ${isSpeaking ? 'animate-pulse text-emerald-400' : 'text-slate-500'}`} />
-              <span>{isSpeaking ? 'Audio-Synced Speech' : 'Dialogue Standby'}</span>
-              <div className="flex items-end gap-0.5 h-3">
+            <div className="flex items-center gap-1.5 mt-1 px-2.5 py-0.5 rounded-full bg-black/75 backdrop-blur-sm border border-white/10 text-[9px] text-slate-300 font-mono shadow-md">
+              <Radio className={`w-2.5 h-2.5 ${isSpeaking ? 'animate-pulse text-emerald-400' : 'text-slate-500'}`} />
+              <span>{isSpeaking ? 'Speech Synced' : 'Ready'}</span>
+              <div className="flex items-end gap-0.5 h-2.5">
                 <span className={`w-0.5 rounded-full ${isSpeaking ? 'h-2 bg-emerald-400 animate-[pulse_0.4s_ease-in-out_infinite]' : 'h-1 bg-slate-600'}`} />
-                <span className={`w-0.5 rounded-full ${isSpeaking ? 'h-3 bg-teal-300 animate-[pulse_0.3s_ease-in-out_infinite_0.1s]' : 'h-1 bg-slate-600'}`} />
+                <span className={`w-0.5 rounded-full ${isSpeaking ? 'h-2.5 bg-teal-300 animate-[pulse_0.3s_ease-in-out_infinite_0.1s]' : 'h-1 bg-slate-600'}`} />
                 <span className={`w-0.5 rounded-full ${isSpeaking ? 'h-1.5 bg-emerald-400 animate-[pulse_0.5s_ease-in-out_infinite_0.2s]' : 'h-1 bg-slate-600'}`} />
-                <span className={`w-0.5 rounded-full ${isSpeaking ? 'h-3 bg-emerald-300 animate-[pulse_0.35s_ease-in-out_infinite_0.15s]' : 'h-1 bg-slate-600'}`} />
+                <span className={`w-0.5 rounded-full ${isSpeaking ? 'h-2.5 bg-emerald-300 animate-[pulse_0.35s_ease-in-out_infinite_0.15s]' : 'h-1 bg-slate-600'}`} />
               </div>
             </div>
           )}

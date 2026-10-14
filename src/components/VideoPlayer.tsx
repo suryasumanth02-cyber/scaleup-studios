@@ -66,7 +66,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const currentScene = scenes[currentSceneIndex] || scenes[0];
   const isQrScene = currentScene.stage === 'Call to Action';
   const avatar = campaign.avatar;
-  const framing = avatar?.framing || 'bubble';
+  const framing = avatar?.framing || 'fullscreen';
   const themeColor = avatar?.themeColor || '#10b981';
   const isHuman = avatar?.category === 'human' || avatar?.avatarType === 'human_presenter';
 
@@ -78,13 +78,16 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
 
     if (isMuted) {
-      // If muted, simulate speaking for active scene duration so mouth moves in sync
+      // If muted, simulate speaking for active scene duration
       setIsSpeaking(true);
       setSpeechProgress(0);
       return;
     }
 
-    window.speechSynthesis.cancel();
+    try {
+      window.speechSynthesis.cancel();
+    } catch (_) {}
+
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 1.05;
     
@@ -99,8 +102,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const voices = window.speechSynthesis.getVoices();
     const englishVoice = voices.find(v => 
       v.lang.startsWith('en') && 
-      (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Samantha') || v.name.includes('David') || v.name.includes('Daniel'))
-    );
+      (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Samantha') || v.name.includes('David') || v.name.includes('Daniel') || v.name.includes('Ryan') || v.name.includes('Online'))
+    ) || voices.find(v => v.lang.startsWith('en'));
     if (englishVoice) {
       utterance.voice = englishVoice;
     }
@@ -127,8 +130,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       setIsSpeaking(false);
     };
 
-    window.speechSynthesis.speak(utterance);
-    speechRef.current = utterance;
+    setTimeout(() => {
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.speak(utterance);
+        speechRef.current = utterance;
+      }
+    }, 15);
   };
 
   // Dynamic Voice Ducking: Auto-ducks BGM when speech is active, smoothly raises BGM on silence
@@ -146,6 +153,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       if (timerRef.current) clearInterval(timerRef.current);
     } else {
       setIsPlaying(true);
+      setIsSpeaking(true);
       if (!isMuted && bgmTrack !== 'none') {
         bgmEngine.start(bgmTrack);
       }
@@ -246,22 +254,48 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         >
           
           {/* ========================================================================= */}
-          {/* LAYER 1: CINEMATIC B-ROLL BACKGROUND (FULL-BLEED 9:16 HIGH DEFINITION)    */}
+          {/* LAYER 1: CINEMATIC CANVAS (FULL-BLEED 9:16 REAL HUMAN PRESENTER / B-ROLL) */}
           {/* ========================================================================= */}
           <div className="absolute inset-0 z-0 overflow-hidden bg-slate-950">
-            {/* If fullscreen presenter mode is chosen for human avatar */}
-            {framing === 'fullscreen' && !isQrScene ? (
-              <AnimatedAvatarCanvas
-                avatar={avatar}
-                isPlaying={isPlaying}
-                isSpeaking={isSpeaking}
-                speechProgress={speechProgress}
-                speechRate={1.05}
-                framing="fullscreen"
-                isQrScene={isQrScene}
-                currentScene={currentScene}
-                sceneIndex={currentSceneIndex}
-              />
+            {/* If fullscreen presenter mode is chosen (DEFAULT & RECOMMENDED) */}
+            {framing === 'fullscreen' ? (
+              <div className="relative w-full h-full">
+                <AnimatedAvatarCanvas
+                  avatar={avatar}
+                  isPlaying={isPlaying}
+                  isSpeaking={isSpeaking}
+                  speechProgress={speechProgress}
+                  speechRate={1.05}
+                  framing="fullscreen"
+                  isQrScene={isQrScene}
+                  currentScene={currentScene}
+                  sceneIndex={currentSceneIndex}
+                />
+
+                {/* Dynamic Commercial B-Roll Action Cutaway (Floating in Fullscreen mode during Problem, Solution or Social Proof) */}
+                {!isQrScene && currentScene.mediaUrl && (currentScene.stage === 'Problem' || currentScene.stage === 'Solution' || currentScene.stage === 'Social Proof') && (
+                  <div className="absolute top-16 right-3 z-20 w-32 h-44 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/20 bg-black/80 backdrop-blur-md animate-fade-in group pointer-events-none">
+                    <img 
+                      src={currentScene.mediaUrl} 
+                      alt={currentScene.visualDescription}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                    <div className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-full bg-black/85 border border-white/10 text-[8px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1 shadow">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      {currentScene.stage}
+                    </div>
+                    <div className="absolute bottom-1.5 inset-x-1.5 text-[8px] font-extrabold text-white truncate text-center drop-shadow">
+                      Live Action Demo
+                    </div>
+                  </div>
+                )}
+
+                {/* Soft dark blur vignette during Scene 5 QR outro so the scannable QR is crystal clear */}
+                {isQrScene && (
+                  <div className="absolute inset-0 bg-black/75 backdrop-blur-[2px] pointer-events-none transition-all duration-500" />
+                )}
+              </div>
             ) : framing === 'split' && !isQrScene ? (
               <div className="w-full h-full flex flex-col">
                 {/* Top Half: Presenter Studio */}
@@ -294,7 +328,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 </div>
               </div>
             ) : (
-              /* Studio Anchor PIP Mode (Default & Most Realistic): Full B-Roll Canvas */
+              /* Studio Anchor PIP Mode: Full B-Roll Canvas with Corner Presenter */
               <div className="relative w-full h-full">
                 {currentScene.mediaUrl ? (
                   <img 
@@ -662,20 +696,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800 text-[11px]">
               <span className="text-slate-400 px-2 font-semibold">Presenter Layout:</span>
               <button
-                onClick={() => onToggleFraming('bubble')}
-                className={`px-3 py-1 rounded-lg transition-all ${
-                  framing === 'bubble' ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                🎬 Studio Anchor (PIP)
-              </button>
-              <button
                 onClick={() => onToggleFraming('fullscreen')}
-                className={`px-3 py-1 rounded-lg transition-all ${
+                className={`px-3 py-1 rounded-lg transition-all flex items-center gap-1 ${
                   framing === 'fullscreen' ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
                 }`}
               >
-                👤 Full Screen Presenter
+                <span>👤 Full Screen Presenter</span>
+                <span className={`text-[8px] px-1 rounded font-bold uppercase ${framing === 'fullscreen' ? 'bg-slate-950/20 text-slate-950' : 'bg-emerald-500/20 text-emerald-400'}`}>Best</span>
               </button>
               <button
                 onClick={() => onToggleFraming('split')}
@@ -684,6 +711,14 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 }`}
               >
                 ⚡ Split Screen Action
+              </button>
+              <button
+                onClick={() => onToggleFraming('bubble')}
+                className={`px-3 py-1 rounded-lg transition-all ${
+                  framing === 'bubble' ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm' : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                🎬 Studio Anchor (PIP)
               </button>
             </div>
           )}

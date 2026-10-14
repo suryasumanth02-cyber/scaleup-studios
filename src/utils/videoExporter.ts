@@ -188,36 +188,100 @@ export async function exportCampaignVideo(
         });
       }
 
-      // 1. Draw Background (B-Roll or gradient)
+      // 1. Draw Background & Presenter
       ctx.fillStyle = '#020617';
       ctx.fillRect(0, 0, width, height);
 
-      if (sceneImg && sceneImg.width > 0) {
-        // Subtle slow cinematic zoom (1.0 to 1.08)
-        const scale = 1.0 + sceneProgress * 0.08;
-        const dw = width * scale;
-        const dh = height * scale;
+      if (framing === 'fullscreen' && avatarImg && avatarImg.width > 0) {
+        // Draw Real Human Presenter Full Screen with breathing animation
+        const breathScale = 1.0 + Math.sin(f * 0.08) * 0.015;
+        const dw = width * breathScale;
+        const dh = height * breathScale;
         const dx = (width - dw) / 2;
         const dy = (height - dh) / 2;
-        ctx.drawImage(sceneImg, dx, dy, dw, dh);
+        ctx.drawImage(avatarImg, dx, dy, dw, dh);
+
+        // Cinematic lighting vignette
+        const darkGrad = ctx.createLinearGradient(0, 0, 0, height);
+        darkGrad.addColorStop(0, 'rgba(0, 0, 0, 0.45)');
+        darkGrad.addColorStop(0.5, 'rgba(0, 0, 0, 0.1)');
+        darkGrad.addColorStop(0.8, 'rgba(0, 0, 0, 0.65)');
+        darkGrad.addColorStop(1, 'rgba(0, 0, 0, 0.95)');
+        ctx.fillStyle = darkGrad;
+        ctx.fillRect(0, 0, width, height);
+
+        // Floating Commercial B-Roll Cutaway (during Problem/Solution/Proof scenes)
+        if (sIdx > 0 && sIdx < scenes.length - 1 && sceneImg && sceneImg.width > 0) {
+          const cutW = 200;
+          const cutH = 260;
+          const cutX = width - cutW - 24;
+          const cutY = 64;
+
+          ctx.save();
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.6)';
+          ctx.shadowBlur = 20;
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+          ctx.lineWidth = 3;
+          ctx.fillStyle = '#0f172a';
+          ctx.beginPath();
+          ctx.roundRect(cutX, cutY, cutW, cutH, 18);
+          ctx.fill();
+          ctx.stroke();
+          ctx.clip();
+
+          ctx.drawImage(sceneImg, cutX, cutY, cutW, cutH);
+          ctx.restore();
+
+          // Action Tag Badge
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+          ctx.beginPath();
+          ctx.roundRect(cutX + 10, cutY + 10, 80, 20, 10);
+          ctx.fill();
+
+          ctx.fillStyle = '#34d399';
+          ctx.font = 'bold 9px sans-serif';
+          ctx.fillText(`●  ${scene.stage.toUpperCase()}`, cutX + 18, cutY + 23);
+        }
+      } else if (framing === 'split') {
+        // Split screen: top half presenter, bottom half B-roll
+        if (avatarImg && avatarImg.width > 0) {
+          ctx.drawImage(avatarImg, 0, 0, width, height / 2);
+        }
+        if (sceneImg && sceneImg.width > 0) {
+          ctx.drawImage(sceneImg, 0, height / 2, width, height / 2);
+        }
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, height / 2);
+        ctx.lineTo(width, height / 2);
+        ctx.stroke();
       } else {
-        // Gradient fallback
-        const grad = ctx.createLinearGradient(0, 0, 0, height);
-        grad.addColorStop(0, '#0f172a');
-        grad.addColorStop(0.5, '#020617');
-        grad.addColorStop(1, '#000000');
-        ctx.fillStyle = grad;
+        // Bubble / PIP mode: full B-roll background
+        if (sceneImg && sceneImg.width > 0) {
+          const scale = 1.0 + sceneProgress * 0.08;
+          const dw = width * scale;
+          const dh = height * scale;
+          const dx = (width - dw) / 2;
+          const dy = (height - dh) / 2;
+          ctx.drawImage(sceneImg, dx, dy, dw, dh);
+        } else {
+          const grad = ctx.createLinearGradient(0, 0, 0, height);
+          grad.addColorStop(0, '#0f172a');
+          grad.addColorStop(0.5, '#020617');
+          grad.addColorStop(1, '#000000');
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, width, height);
+        }
+
+        const darkGrad = ctx.createLinearGradient(0, 0, 0, height);
+        darkGrad.addColorStop(0, 'rgba(2, 6, 23, 0.55)');
+        darkGrad.addColorStop(0.35, 'rgba(2, 6, 23, 0.2)');
+        darkGrad.addColorStop(0.75, 'rgba(2, 6, 23, 0.7)');
+        darkGrad.addColorStop(1, 'rgba(2, 6, 23, 0.95)');
+        ctx.fillStyle = darkGrad;
         ctx.fillRect(0, 0, width, height);
       }
-
-      // Dark cinematic overlays for contrast
-      const darkGrad = ctx.createLinearGradient(0, 0, 0, height);
-      darkGrad.addColorStop(0, 'rgba(2, 6, 23, 0.55)');
-      darkGrad.addColorStop(0.35, 'rgba(2, 6, 23, 0.2)');
-      darkGrad.addColorStop(0.75, 'rgba(2, 6, 23, 0.7)');
-      darkGrad.addColorStop(1, 'rgba(2, 6, 23, 0.95)');
-      ctx.fillStyle = darkGrad;
-      ctx.fillRect(0, 0, width, height);
 
       // 2. Draw Top Progress Bars (Instagram Reels / TikTok style)
       const barPadding = 16;
