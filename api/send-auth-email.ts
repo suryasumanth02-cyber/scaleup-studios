@@ -1,10 +1,4 @@
-import type { IncomingMessage, ServerResponse } from 'http';
-
-interface ExtendedRequest extends IncomingMessage {
-  body?: any;
-}
-
-export default async function handler(req: ExtendedRequest, res: ServerResponse) {
+export default async function handler(req: any, res: any) {
   // CORS Headers
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -14,29 +8,39 @@ export default async function handler(req: ExtendedRequest, res: ServerResponse)
     'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
   );
 
+  const sendJson = (status: number, data: any) => {
+    if (typeof res.status === 'function') {
+      return res.status(status).json(data);
+    }
+    res.statusCode = status;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(data));
+  };
+
   if (req.method === 'OPTIONS') {
+    if (typeof res.status === 'function') return res.status(200).end();
     res.statusCode = 200;
     res.end();
     return;
   }
 
   if (req.method !== 'POST') {
-    res.statusCode = 405;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ error: 'Method not allowed' }));
-    return;
+    return sendJson(405, { error: 'Method not allowed' });
   }
 
-  // Parse JSON body if not already parsed
+  // Robust Body Parsing across Vercel environments
   let body = req.body;
-  if (!body) {
+  if (typeof body === 'string') {
     try {
-      const buffers = [];
+      body = JSON.parse(body);
+    } catch (_) {}
+  } else if (!body) {
+    try {
+      const chunks = [];
       for await (const chunk of req) {
-        buffers.push(chunk);
+        chunks.push(chunk);
       }
-      const data = Buffer.concat(buffers).toString();
-      body = JSON.parse(data);
+      body = JSON.parse(Buffer.concat(chunks).toString());
     } catch (_) {
       body = {};
     }
@@ -45,25 +49,20 @@ export default async function handler(req: ExtendedRequest, res: ServerResponse)
   const { email, code, type = 'verification_code', name, businessName, apiKey } = body || {};
 
   if (!email) {
-    res.statusCode = 400;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ error: 'Email address is required' }));
-    return;
+    return sendJson(400, { error: 'Email address is required' });
   }
 
   const cleanEmail = String(email).trim().toLowerCase();
   const activeApiKey = process.env.RESEND_API_KEY || apiKey;
 
+  // If no Resend API key is configured yet, provide clear status and code for test verification
   if (!activeApiKey) {
-    res.statusCode = 200;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({
+    return sendJson(200, {
       success: false,
       needsApiKey: true,
       error: 'RESEND_API_KEY is not configured yet. Please enter a free Resend key or set RESEND_API_KEY in your Vercel Environment Variables.',
       code: code
-    }));
-    return;
+    });
   }
 
   try {
@@ -134,29 +133,22 @@ export default async function handler(req: ExtendedRequest, res: ServerResponse)
     const data = await response.json();
 
     if (!response.ok) {
-      res.statusCode = response.status || 400;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(JSON.stringify({ 
-        success: false, 
-        error: data.message || 'Resend API returned an error', 
-        details: data 
-      }));
-      return;
+      return sendJson(response.status || 400, {
+        success: false,
+        error: data.message || 'Resend API returned an error',
+        details: data
+      });
     }
 
-    res.statusCode = 200;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ 
-      success: true, 
-      messageId: data.id, 
-      deliveredTo: cleanEmail 
-    }));
+    return sendJson(200, {
+      success: true,
+      messageId: data.id,
+      deliveredTo: cleanEmail
+    });
   } catch (err: any) {
-    res.statusCode = 500;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ 
-      success: false, 
-      error: err.message || 'Internal Server Error sending email' 
-    }));
+    return sendJson(500, {
+      success: false,
+      error: err.message || 'Internal Server Error sending email'
+    });
   }
 }
